@@ -1,0 +1,50 @@
+{
+  "name": "pasteblox",
+  "version": "0.1.0",
+  "description": "pbx: push, pull, diff and watch Roblox/Luau scripts on pasteblox.com from your terminal",
+  "keywords": [
+    "roblox",
+    "luau",
+    "lua",
+    "pastebin",
+    "cli",
+    "loadstring"
+  ],
+  "homepage": "https://pasteblox.com/cli",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pasteblox/cli.git"
+  },
+  "bugs": "https://github.com/pasteblox/cli/issues",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "pbx": "./dist/pbx.js",
+    "pasteblox": "./dist/pbx.js"
+  },
+  "files": [
+    "dist",
+    "!dist/bin"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "bun src/index.ts",
+    "build": "bun build src/index.ts --target=node --format=esm --minify --outfile dist/pbx.js",
+    "build:bin": "bun scripts/build-bin.ts",
+    "test": "bun run build && bun test && PBX_TEST_RUNNER=node bun test test/e2e.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.2",
+    "@pasteblox/shared": "workspace:*",
+    "@types/bun": "1.3.6",
+    "typescript": "5.9.3",
+    "zod": "4.6.7"
+  },
+  "workspaces": [
+    "shared"
+  ]
+}
