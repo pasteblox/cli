@@ -19,8 +19,8 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "pbx": "./dist/pbx.js",
-    "pasteblox": "./dist/pbx.js"
+    "pbx": "dist/pbx.js",
+    "pasteblox": "dist/pbx.js"
   },
   "files": [
     "dist",
