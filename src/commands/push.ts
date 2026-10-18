@@ -4,6 +4,7 @@ import { c } from "../lib/color";
 import { claimsPath } from "../lib/config";
 import { makeApi, visibilityFromFlags } from "../lib/context";
 import { CliError, UsageError } from "../lib/errors";
+import { readNotes } from "../lib/notes";
 import { findProject, PROJECT_FILE, toProjectPath } from "../lib/project";
 import { flagWarnings, isDirty, type PushResult, pushFile } from "../lib/pusher";
 import {
@@ -27,6 +28,7 @@ export const run: Run = async (ctx) => {
   const api = makeApi(ctx);
   const project = findProject();
   const message = str(ctx.flags.message);
+  const notes = await readNotes(ctx.flags, "push");
   const title = str(ctx.flags.title);
   const visibility = visibilityFromFlags(ctx.flags);
   const force = bool(ctx.flags.force);
@@ -45,10 +47,11 @@ export const run: Run = async (ctx) => {
       );
     }
     const res = await withSpinner(`pushing ${file}`, () =>
-      pushFile(api, project, { file, message, title, visibility, slug, force }),
+      pushFile(api, project, { file, message, notes, title, visibility, slug, force }),
     );
     if (ctx.json) printJson({ pushed: [res], skipped: [], errors: [] });
     else printResult(res, true);
+    if (res.unchanged && (message || notes)) notesNotSaved(res);
     return 0;
   }
 
@@ -81,7 +84,7 @@ export const run: Run = async (ctx) => {
     }
     try {
       const res = await withSpinner(`pushing ${m.file}`, () =>
-        pushFile(api, project, { file: m.file, message, force }, state.content),
+        pushFile(api, project, { file: m.file, message, notes, force }, state.content),
       );
       pushed.push(res);
       if (!ctx.json) printResult(res, false);
@@ -99,6 +102,13 @@ export const run: Run = async (ctx) => {
   } else if (skipped.length) note(`${skipped.length} unchanged`);
   return errors.length ? 1 : 0;
 };
+
+/** The server ignores message/notes when the code didn't change; say where they can go instead. */
+function notesNotSaved(res: PushResult): void {
+  note(
+    `nothing changed, so no new version for the message/notes ${c.muted(`(pbx note ${res.slug} ${res.version} edits v${res.version})`)}`,
+  );
+}
 
 export function printResult(res: PushResult, detailed: boolean): void {
   const meta = c.muted(`· ${formatBytes(res.sizeBytes)} · ${res.ms}ms`);

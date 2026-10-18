@@ -16,6 +16,7 @@ import {
   MAX_DESCRIPTION_LENGTH,
   MAX_GAME_LENGTH,
   MAX_MESSAGE_LENGTH,
+  MAX_NOTES_LENGTH,
   MAX_PAGE_SIZE,
   MAX_REPORT_DETAILS_LENGTH,
   MAX_SCRIPT_BYTES,
@@ -175,6 +176,8 @@ export const ScriptContentSchema = z
 export const TitleSchema = lineText(MAX_TITLE_LENGTH);
 export const DescriptionSchema = blockText(MAX_DESCRIPTION_LENGTH);
 export const MessageSchema = lineText(MAX_MESSAGE_LENGTH);
+/** a version's changelog: what changed, in detail (bullets, short paragraphs) */
+export const NotesSchema = blockText(MAX_NOTES_LENGTH);
 export const GameSchema = lineText(MAX_GAME_LENGTH).pipe(z.string().min(1));
 export const TagSchema = z
   .string()
@@ -245,6 +248,8 @@ export const ScriptUrlsSchema = z.object({
 export const VersionMetaSchema = z.object({
   n: VersionNumberSchema,
   message: z.string(),
+  /** detailed changelog ("" when none); older servers omit it */
+  notes: z.string().default(""),
   sizeBytes: z.int(),
   lineCount: z.int(),
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
@@ -321,6 +326,7 @@ export const CreateScriptRequestSchema = z.object({
   game: GameSchema.nullish(),
   tags: TagsSchema.optional(),
   message: MessageSchema.optional(),
+  notes: NotesSchema.optional(),
 });
 
 export const CreateScriptResponseSchema = z.object({
@@ -372,6 +378,7 @@ export const DeleteScriptResponseSchema = z.object({
 export const PushVersionRequestSchema = z.object({
   content: ScriptContentSchema,
   message: MessageSchema.optional(),
+  notes: NotesSchema.optional(),
   /** optimistic concurrency: if set and ≠ latest, 409 version_conflict */
   baseVersion: VersionNumberSchema.optional(),
 });
@@ -380,6 +387,17 @@ export const PushVersionResponseSchema = z.object({
   unchanged: z.boolean(),
   version: VersionMetaSchema,
   urls: ScriptUrlsSchema,
+});
+
+// ── PATCH /api/v1/scripts/:slug/versions/:n ─────────────────────────────────
+
+/** Rewrite a version's summary and/or changelog (the code never changes). */
+export const UpdateVersionRequestSchema = z
+  .object({ message: MessageSchema, notes: NotesSchema })
+  .partial()
+  .refine((o) => Object.keys(o).length > 0, { error: "nothing to update" });
+export const UpdateVersionResponseSchema = z.object({
+  version: VersionMetaSchema,
 });
 
 // ── GET /api/v1/scripts/:slug/versions[/:n] ──────────────────────────────────
@@ -557,6 +575,8 @@ export type UpdateScriptResponse = z.infer<typeof UpdateScriptResponseSchema>;
 export type DeleteScriptResponse = z.infer<typeof DeleteScriptResponseSchema>;
 export type PushVersionRequest = z.input<typeof PushVersionRequestSchema>;
 export type PushVersionResponse = z.infer<typeof PushVersionResponseSchema>;
+export type UpdateVersionRequest = z.input<typeof UpdateVersionRequestSchema>;
+export type UpdateVersionResponse = z.infer<typeof UpdateVersionResponseSchema>;
 export type ListVersionsResponse = z.infer<typeof ListVersionsResponseSchema>;
 export type GetVersionResponse = z.infer<typeof GetVersionResponseSchema>;
 export type ListMyScriptsQuery = z.input<typeof ListMyScriptsQuerySchema>;
@@ -622,6 +642,13 @@ export const API_ENDPOINTS = {
     auth: ["claim", "session", "bearer", "api_key"],
     request: PushVersionRequestSchema,
     response: PushVersionResponseSchema,
+  },
+  updateVersion: {
+    method: "PATCH",
+    path: "/scripts/:slug/versions/:n",
+    auth: ["claim", "session", "bearer", "api_key"],
+    request: UpdateVersionRequestSchema,
+    response: UpdateVersionResponseSchema,
   },
   listVersions: {
     method: "GET",

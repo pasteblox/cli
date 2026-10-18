@@ -182,6 +182,9 @@ function friendly(
         },
       ];
     case "not_found":
+      // the script exists but the version doesn't: "version 9 does not exist (latest is 3)"
+      if (/^version\b/.test(serverMsg))
+        return [`${script}: ${serverMsg}`, { ...base, hint: `pbx log ${ctx.slug ?? "<slug>"} lists its versions` }];
       return [
         `${script} not found`,
         { ...base, hint: "check the slug (private scripts only show up for their owner)" },

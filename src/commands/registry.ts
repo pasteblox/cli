@@ -33,6 +33,16 @@ const visibilityFlags: FlagSpecs = {
   private: { type: "boolean", desc: "only you (needs login)" },
 };
 
+const notesFlags: FlagSpecs = {
+  notes: {
+    type: "string",
+    multiple: true,
+    placeholder: "<text>",
+    desc: "changelog: bullets, ## headings, **bold**, `code` (repeat for more lines)",
+  },
+  "notes-file": { type: "string", placeholder: "<path>", desc: "read the changelog from a file, - for stdin" },
+};
+
 export const GLOBAL_FLAGS: FlagSpecs = {
   json: { type: "boolean", desc: "machine-readable output on stdout" },
   api: {
@@ -106,16 +116,19 @@ export const COMMANDS: CommandDef[] = [
     group: "scripts",
     summary: "upload a new version (or create the script)",
     description:
-      "mapped files get a new version; unmapped files become new scripts and are added to pasteblox.json. with no file, pushes every mapped file that changed since the last push.",
+      "mapped files get a new version; unmapped files become new scripts and are added to pasteblox.json. with no file, pushes every mapped file that changed since the last push, each with the same message and notes.",
     usage: "pbx push [file] [flags]",
     examples: [
       ["pbx push", "push every mapped file that changed"],
       ['pbx push src/door.luau -m "fix debounce"', "push one file with a message"],
       ['pbx push hub.lua --public --title "speed hub"', "create a public script"],
       ["pbx push door.luau --slug k3m9x2p7qa", "push into an existing script"],
+      ['pbx push -m "v2" --notes "- added: auto farm" --notes "- fixed: lag"', "summary plus a changelog"],
+      ["git log -1 --format=%b | pbx push --notes-file -", "changelog from stdin"],
     ],
     flags: {
-      message: { type: "string", short: "m", placeholder: "<text>", desc: "version message" },
+      message: { type: "string", short: "m", placeholder: "<text>", desc: "version summary (one line)" },
+      ...notesFlags,
       title: { type: "string", short: "t", placeholder: "<text>", desc: "script title", defaultLabel: "file name" },
       slug: { type: "string", short: "s", placeholder: "<slug>", desc: "push into this script and map the file to it" },
       ...visibilityFlags,
@@ -174,15 +187,35 @@ export const COMMANDS: CommandDef[] = [
     name: "log",
     group: "scripts",
     summary: "version history",
+    description: "newest first, each version's changelog indented under its summary.",
     usage: "pbx log <slug> [flags]",
     examples: [
       ["pbx log k3m9x2p7qa", "recent versions, newest first"],
-      ["pbx log src/door.luau -n 50", "by file, more history"],
+      ["pbx log src/door.luau -n 50 --short", "by file, more history, summaries only"],
     ],
     flags: {
       limit: { type: "string", short: "n", placeholder: "<n>", desc: "how many versions", defaultLabel: "20" },
+      short: { type: "boolean", desc: "one line per version, no changelogs" },
     },
     load: () => import("./log"),
+  },
+  {
+    name: "note",
+    group: "scripts",
+    summary: "rewrite a version's summary or changelog",
+    description:
+      'fixes the message and notes of a version you already pushed; the code never changes. without a version number it edits the latest. --notes "" clears the changelog.',
+    usage: "pbx note <slug> [n] [flags]",
+    examples: [
+      ['pbx note k3m9x2p7qa 3 -m "fix door debounce"', "reword v3's summary"],
+      ["pbx note src/door.luau --notes-file CHANGELOG.md", "changelog for the latest version"],
+      ['pbx note k3m9x2p7qa@2 --notes ""', "clear v2's changelog"],
+    ],
+    flags: {
+      message: { type: "string", short: "m", placeholder: "<text>", desc: "new summary (one line)" },
+      ...notesFlags,
+    },
+    load: () => import("./note"),
   },
   {
     name: "ls",

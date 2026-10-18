@@ -47,6 +47,8 @@ import {
   SLUG_REGEX,
   UpdateScriptRequestSchema,
   UpdateScriptResponseSchema,
+  UpdateVersionRequestSchema,
+  UpdateVersionResponseSchema,
   utf8ByteLength,
   type Visibility,
   WhoamiResponseSchema,
@@ -65,6 +67,7 @@ interface Version {
   n: number;
   content: string;
   message: string;
+  notes: string;
   sha256: string;
   sizeBytes: number;
   lineCount: number;
@@ -209,6 +212,7 @@ export function startMockServer(opts: MockOptions = {}): MockServer {
   const versionMeta = (v: Version) => ({
     n: v.n,
     message: v.message,
+    notes: v.notes,
     sizeBytes: v.sizeBytes,
     lineCount: v.lineCount,
     sha256: v.sha256,
@@ -252,10 +256,17 @@ export function startMockServer(opts: MockOptions = {}): MockServer {
     urls: urls(s, latest(s).n),
   });
 
-  const makeVersion = (n: number, content: string, message: string, authorId: string | null): Version => ({
+  const makeVersion = (
+    n: number,
+    content: string,
+    message: string,
+    notes: string,
+    authorId: string | null,
+  ): Version => ({
     n,
     content,
     message,
+    notes,
     sha256: sha(content),
     sizeBytes: utf8ByteLength(content),
     lineCount: countLines(content),
@@ -434,7 +445,7 @@ export function startMockServer(opts: MockOptions = {}): MockServer {
           language: v.language,
           ownerId: userId,
           claimToken: token,
-          versions: [makeVersion(1, v.content, v.message ?? "", userId)],
+          versions: [makeVersion(1, v.content, v.message ?? "", v.notes ?? "", userId)],
           viewCount: 0,
           fetchCount: 0,
           createdAt: now,
@@ -516,7 +527,7 @@ export function startMockServer(opts: MockOptions = {}): MockServer {
           if (sha(v.content) === l.sha256) {
             return json(PushVersionResponseSchema, { unchanged: true, version: versionMeta(l), urls: urls(s, l.n) });
           }
-          const nv = makeVersion(l.n + 1, v.content, v.message ?? "", userId);
+          const nv = makeVersion(l.n + 1, v.content, v.message ?? "", v.notes ?? "", userId);
           s.versions.push(nv);
           s.updatedAt = iso();
           return json(
@@ -529,6 +540,16 @@ export function startMockServer(opts: MockOptions = {}): MockServer {
       }
 
       // /versions/:n
+      if (method === "PATCH") {
+        if (!canEdit) return error(userId ? 403 : 401, userId ? "forbidden" : "unauthorized", "not yours");
+        const u = validate(UpdateVersionRequestSchema, body);
+        if (u instanceof Response) return u;
+        const v = s.versions.find((x) => String(x.n) === m[3]);
+        if (!v) return error(404, "not_found", `version ${m[3]} does not exist`);
+        if (u.message !== undefined) v.message = u.message;
+        if (u.notes !== undefined) v.notes = u.notes;
+        return json(UpdateVersionResponseSchema, { version: versionMeta(v) });
+      }
       if (method !== "GET") return error(404, "not_found", "no such route");
       const n = m[3] === "latest" ? latest(s).n : Number(m[3]);
       const v = s.versions.find((x) => x.n === n);

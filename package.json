@@ -1,6 +1,6 @@
 {
   "name": "pasteblox",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "pbx: push, pull, diff and watch Roblox/Luau scripts on pasteblox.com from your terminal",
   "keywords": [
     "roblox",

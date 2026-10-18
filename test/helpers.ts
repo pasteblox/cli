@@ -76,14 +76,14 @@ export interface RunResult {
 export async function pbx(
   sb: Sandbox,
   args: string[],
-  opts: { cwd?: string; env?: Record<string, string> } = {},
+  opts: { cwd?: string; env?: Record<string, string>; stdin?: string } = {},
 ): Promise<RunResult> {
   const proc = Bun.spawn(command(args), {
     cwd: opts.cwd ?? sb.project,
     env: { ...sb.env, ...opts.env },
     stdout: "pipe",
     stderr: "pipe",
-    stdin: "ignore",
+    stdin: opts.stdin === undefined ? "ignore" : new Blob([opts.stdin]),
   });
   const [stdout, stderr, code] = await Promise.all([
     new Response(proc.stdout).text(),

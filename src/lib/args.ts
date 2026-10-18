@@ -61,7 +61,8 @@ export function parseArgs(argv: string[], specs: FlagSpecs, cmdName: string): Pa
       } else {
         if (inline === undefined) {
           const next = argv[i + 1];
-          if (next === undefined || (next.startsWith("-") && next !== "-")) {
+          // "-" (stdin) and "- fixed: x" (a changelog bullet) are values, "-m" and "--json" are flags
+          if (next === undefined || /^-(?:-|[A-Za-z])/.test(next)) {
             throw new UsageError(
               `--${name} needs a value`,
               `e.g. pbx ${cmdName} --${name} ${spec.placeholder ?? "<value>"}`,

@@ -8,6 +8,8 @@ import { detectColorLevel, makePalette, stripAnsi } from "../src/lib/color";
 import { resolveRef } from "../src/lib/context";
 import { formatUserCode, pollForToken } from "../src/lib/device";
 import { diffKeys, unifiedDiff } from "../src/lib/diff";
+import { UsageError } from "../src/lib/errors";
+import { normalizeNotes, readNotes, renderNotes } from "../src/lib/notes";
 import { findProject } from "../src/lib/project";
 import { ago, formatBytes } from "../src/lib/ui";
 
@@ -43,6 +45,51 @@ describe("args", () => {
   test("missing values are usage errors", () => {
     expect(() => parseArgs(["-m"], specs, "push")).toThrow("-m needs a value");
     expect(() => parseArgs(["--message", "--json"], specs, "push")).toThrow("--message needs a value");
+  });
+  test("values that start with a dash: stdin and changelog bullets", () => {
+    expect(parseArgs(["--message", "-"], specs, "x").flags.message).toBe("-");
+    expect(parseArgs(["--message", "- fixed: lag"], specs, "x").flags.message).toBe("- fixed: lag");
+    expect(parseArgs(["--message", "-5"], specs, "x").flags.message).toBe("-5");
+    expect(() => parseArgs(["--message", "-y"], specs, "x")).toThrow("--message needs a value");
+  });
+});
+
+describe("notes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pbx-notes-"));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  test("normalize: CRLF, BOM, trailing spaces, outer blank lines", () => {
+    expect(normalizeNotes("\uFEFF\r\n- added: x  \r\n\r\n## more \n\n")).toBe("- added: x\n\n## more");
+  });
+  test("--notes repeats into lines, --notes-file reads a file, both is a usage error", async () => {
+    expect(await readNotes({}, "push")).toBeUndefined();
+    expect(await readNotes({ notes: ["- added: a", "- fixed: b"] }, "push")).toBe("- added: a\n- fixed: b");
+    expect(await readNotes({ notes: [""] }, "note")).toBe("");
+    const f = join(dir, "CHANGELOG.md");
+    writeFileSync(f, "## v2\r\n- removed: c\r\n");
+    expect(await readNotes({ "notes-file": f }, "push")).toBe("## v2\n- removed: c");
+    await expect(readNotes({ notes: ["x"], "notes-file": f }, "push")).rejects.toBeInstanceOf(UsageError);
+    await expect(readNotes({ "notes-file": join(dir, "nope.md") }, "push")).rejects.toThrow("doesn't exist");
+  });
+  test("over the limit is a usage error with the count", async () => {
+    await expect(readNotes({ notes: ["x".repeat(4001)] }, "push")).rejects.toThrow(
+      "4001 characters, over the 4000 limit",
+    );
+  });
+  test("render: labels, bullets, headings, inline marks, paragraphs", () => {
+    const lines = renderNotes(
+      "## Patch\n- added: auto farm\n* FIX: `debounce` on **doors**\n1. see https://pasteblox.com/s/x.\n\n\nplain words",
+      4,
+    ).map(stripAnsi);
+    expect(lines).toEqual([
+      "    Patch",
+      "    • added auto farm",
+      "    • fixed debounce on doors",
+      "    1. see https://pasteblox.com/s/x.",
+      "",
+      "    plain words",
+    ]);
+    expect(renderNotes("  \n\n")).toEqual([]);
   });
 });
 

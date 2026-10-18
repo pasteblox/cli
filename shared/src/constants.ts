@@ -23,6 +23,8 @@ export const MAX_SCRIPT_BYTES = 512 * 1024;
 export const MAX_TITLE_LENGTH = 100;
 export const MAX_DESCRIPTION_LENGTH = 2000;
 export const MAX_MESSAGE_LENGTH = 200;
+/** version changelog body (multi-line, a small markdown subset: bullets, headings, bold, code, links) */
+export const MAX_NOTES_LENGTH = 4000;
 export const MAX_GAME_LENGTH = 64;
 export const MAX_TAGS = 8;
 export const TAG_REGEX = /^[a-z0-9][a-z0-9-]{0,23}$/;

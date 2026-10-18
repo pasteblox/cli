@@ -14,7 +14,6 @@ pbx push door.luau
 ## Install
 
 ```sh
-bunx pasteblox --help        # no install, runs with bun
 npx pasteblox --help         # no install, runs with node ≥ 18
 npm i -g pasteblox           # puts `pbx` (and `pasteblox`) on your PATH
 bun add -g pasteblox
@@ -52,16 +51,30 @@ Wherever a command takes `<slug>`, it also accepts `slug@n`, a page or raw URL, 
 | `pbx logout` | Revokes this machine's key on the server and deletes it locally. |
 | `pbx whoami` | Shows the account and key you're pushing as. |
 | `pbx init [--yes] [-f file]… [--public\|--unlisted\|--private]` | Writes `pasteblox.json`. In a terminal you pick files from a list; in scripts and CI, pass `--yes` (every file found) or `-f`. |
-| `pbx push [file] [-m msg] [-t title] [-s slug] [--public\|--unlisted\|--private] [--force]` | A mapped file gets a new version. An unmapped file becomes a new script and is added to `pasteblox.json`. With no file, pbx pushes every mapped file that changed since the last push. |
+| `pbx push [file] [-m msg] [--notes text\|--notes-file path] [-t title] [-s slug] [--public\|--unlisted\|--private] [--force]` | A mapped file gets a new version. An unmapped file becomes a new script and is added to `pasteblox.json`. With no file, pbx pushes every mapped file that changed since the last push, each with the same message and notes. See [Changelogs](#changelogs). |
 | `pbx pull <slug> [--version n] [-o file] [--force]` | Downloads a script, by default to its mapped file or `<slug>.luau`. pbx won't overwrite local changes you haven't pushed unless you pass `--force`. |
 | `pbx watch` | Watches every mapped file and pushes about 400 ms after you save. Errors don't stop the loop, rate limits retry on their own, and ctrl-c exits. |
 | `pbx diff <slug> [file] [--from n] [--to m]` | A git-style unified diff of your local file against the latest version, or between two versions. |
-| `pbx log <slug> [-n 20]` | Version history, newest first. |
+| `pbx log <slug> [-n 20] [--short]` | Version history, newest first, with each version's changelog indented under its summary. `--short` keeps it to one line per version. |
+| `pbx note <slug> [n] [-m msg] [--notes text\|--notes-file path]` | Rewrites the summary or changelog of a version you already pushed (the latest if you leave out `n`). The code never changes. `--notes ""` clears the changelog. |
 | `pbx ls [--visibility v] [--sort updated\|created\|stars\|views\|fetches] [-n 100]` | Lists your scripts. |
 | `pbx open <slug> [--raw]` | Opens the script page, or its raw URL, in your browser. |
 | `pbx loadstring <slug> [--version n] [--no-copy]` | Prints the loader one-liner and copies it to your clipboard. `--version` pins it to that version. |
 | `pbx rm <slug> [--yes]` | Deletes the script, which stops its raw URL. In a terminal pbx asks first; anywhere else you have to pass `--yes`. |
 | `pbx --version`, `pbx help [command]` | |
+
+### Changelogs
+
+Every version has a one-line summary (`-m`) and an optional changelog (`--notes`, up to 4000 characters). The script page shows the changelog under "what's new" and in its version timeline. It understands a small markdown subset: `- ` bullets, `## ` headings, `**bold**`, `` `code` `` and links. A bullet that starts with `added:`, `fixed:`, `changed:` or `removed:` gets a colored label.
+
+```sh
+pbx push -m "v2" --notes "- added: auto farm" --notes "- fixed: lag on join"   # each --notes is a line
+pbx push --notes-file CHANGELOG.md                                              # from a file
+git log -1 --format=%b | pbx push -m "$(git log -1 --format=%s)" --notes-file -  # from stdin
+pbx note k3m9x2p7qa 3 --notes "- fixed: typo in the door script"                # fix v3's changelog later
+```
+
+If the code didn't change, pushing makes no new version and the notes go nowhere; pbx tells you to use `pbx note` instead.
 
 ### Concurrency
 

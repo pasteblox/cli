@@ -30,6 +30,8 @@ export interface PushOptions {
   /** project-relative POSIX path */
   file: string;
   message?: string;
+  /** changelog body; "" or undefined sends none */
+  notes?: string;
   title?: string;
   visibility?: Visibility;
   /** push into this script (maps the file to it) */
@@ -105,7 +107,12 @@ export async function pushFile(api: Api, project: Project, opts: PushOptions, pr
     const res = await api.request({
       method: "POST",
       path: api.v1(`/scripts/${slug}/versions`),
-      body: { content, ...(opts.message ? { message: opts.message } : {}), ...(baseVersion ? { baseVersion } : {}) },
+      body: {
+        content,
+        ...(opts.message ? { message: opts.message } : {}),
+        ...(opts.notes ? { notes: opts.notes } : {}),
+        ...(baseVersion ? { baseVersion } : {}),
+      },
       schema: PushVersionResponseSchema,
       claimToken,
       slug,
@@ -178,6 +185,7 @@ export async function pushFile(api: Api, project: Project, opts: PushOptions, pr
       visibility,
       language: languageFor(file),
       ...(opts.message ? { message: opts.message } : {}),
+      ...(opts.notes ? { notes: opts.notes } : {}),
     },
     schema: CreateScriptResponseSchema,
   });

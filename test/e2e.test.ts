@@ -335,6 +335,160 @@ describe(`anonymous push + claim on login (${RUNNER})`, () => {
   });
 });
 
+describe(`changelogs: push --notes, log, note (${RUNNER})`, () => {
+  let sb: Sandbox;
+  let a = "";
+  let b = "";
+  type LogJson = { versions: { n: number; message: string; notes: string }[] };
+  const versionsPost = (slug: string) =>
+    mock.requests.findLast((q) => q.path === `/api/v1/scripts/${slug}/versions` && q.method === "POST");
+
+  beforeAll(() => {
+    mock.addKey("pbx_notes_key", "notes");
+    sb = sandbox(mock.url, { PASTEBLOX_TOKEN: "pbx_notes_key" });
+    writeFileSync(join(sb.project, "a.luau"), `print("a1")\n`);
+    writeFileSync(join(sb.project, "b.luau"), `print("b1")\n`);
+  });
+
+  test("push: repeated --notes become lines, sent on create", async () => {
+    let r = await pbx(sb, [
+      "push",
+      "a.luau",
+      "-m",
+      "first cut",
+      "--notes",
+      "- added: doors",
+      "--notes",
+      "- fixed: lag",
+    ]);
+    expect(r.stderr).toBe("");
+    expect(r.code).toBe(0);
+    a = readJson(join(sb.project, "pasteblox.json")).scripts[0].slug;
+    const create = mock.requests.findLast((q) => q.path === "/api/v1/scripts" && q.method === "POST");
+    expect(create?.body).toMatchObject({ message: "first cut", notes: "- added: doors\n- fixed: lag" });
+    expect(mock.scripts.get(a)?.versions[0]?.notes).toBe("- added: doors\n- fixed: lag");
+
+    r = await pbx(sb, ["push", "b.luau"]);
+    expect(r.code).toBe(0);
+    b = readJson(join(sb.project, "pasteblox.json")).scripts[1].slug;
+    expect((mock.requests.at(-1)?.body as Record<string, unknown>).notes).toBeUndefined();
+  });
+
+  test("push: --notes-file - reads stdin, and every changed mapped file gets the same notes", async () => {
+    writeFileSync(join(sb.project, "a.luau"), `print("a2")\n`);
+    writeFileSync(join(sb.project, "b.luau"), `print("b2")\n`);
+    const r = await pbx(sb, ["push", "-m", "v2", "--notes-file", "-"], {
+      stdin: "## round two\r\n- changed: both files\r\n",
+    });
+    expect(r.stderr).toBe("");
+    expect(r.code).toBe(0);
+    for (const slug of [a, b]) {
+      expect(versionsPost(slug)?.body).toMatchObject({ message: "v2", notes: "## round two\n- changed: both files" });
+      expect(mock.scripts.get(slug)?.versions[1]?.notes).toBe("## round two\n- changed: both files");
+    }
+  });
+
+  test("push: --notes-file from a path; --notes with --notes-file is a usage error", async () => {
+    writeFileSync(join(sb.project, "CHANGELOG.md"), "- removed: the old door\n");
+    writeFileSync(join(sb.project, "a.luau"), `print("a3")\n`);
+    let r = await pbx(sb, ["push", "a.luau", "--notes", "x", "--notes-file", "CHANGELOG.md"]);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("pick one of --notes or --notes-file");
+    r = await pbx(sb, ["push", "a.luau", "--notes-file", "CHANGELOG.md"]);
+    expect(r.code).toBe(0);
+    expect(versionsPost(a)?.body).toMatchObject({ notes: "- removed: the old door" });
+    expect((versionsPost(a)?.body as Record<string, unknown>).message).toBeUndefined();
+  });
+
+  test("push: an unchanged file with notes points at pbx note", async () => {
+    const r = await pbx(sb, ["push", "a.luau", "--notes", "- fixed: typo"]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain(`pbx note ${a} 3`);
+  });
+
+  test("log: notes under each summary, --short hides them, --json carries them", async () => {
+    let r = await pbx(sb, ["log", "a.luau"]);
+    expect(r.code).toBe(0);
+    const lines = r.stdout.split("\n");
+    const v1 = lines.findIndex((l) => /^v1 .* first cut/.test(l));
+    expect(lines[v1 + 1]).toMatch(/^ {6,}• added doors$/);
+    expect(lines[v1 + 2]).toMatch(/^ {6,}• fixed lag$/);
+    // notes start under the summary column
+    expect(lines[v1 + 1]?.indexOf("•")).toBe(lines[v1]?.indexOf("first cut"));
+    expect(r.stdout).toContain("round two");
+    expect(r.stdout).toContain("• removed the old door");
+    expect(lines.at(-2)).not.toBe(""); // no blank line after the last entry
+
+    r = await pbx(sb, ["log", "a.luau", "--short"]);
+    expect(r.stdout.trim().split("\n")).toHaveLength(3);
+    expect(r.stdout).not.toContain("added");
+
+    const j = parseJson<LogJson>(await pbx(sb, ["log", a, "--json"]));
+    expect(j.versions.map((v) => v.notes)).toEqual([
+      "- removed: the old door",
+      "## round two\n- changed: both files",
+      "- added: doors\n- fixed: lag",
+    ]);
+  });
+
+  test("note: rewrites a past version's summary and changelog", async () => {
+    let r = await pbx(sb, ["note", a, "1", "-m", "the first cut", "--notes", "- added: doors, finally"]);
+    expect(r.stderr).toBe("");
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("v1");
+    expect(r.stdout).toContain("the first cut");
+    expect(r.stdout).toContain("• added doors, finally");
+    const patch = mock.requests.at(-1);
+    expect(patch).toMatchObject({
+      method: "PATCH",
+      path: `/api/v1/scripts/${a}/versions/1`,
+      body: { message: "the first cut", notes: "- added: doors, finally" },
+    });
+    expect(patch?.apiKey).toBe("pbx_notes_key");
+
+    // slug@n, notes only: the message stays
+    r = await pbx(sb, ["note", `${b}@2`, "--notes-file", "CHANGELOG.md", "--json"]);
+    expect(r.code).toBe(0);
+    expect(parseJson(r)).toMatchObject({
+      slug: b,
+      version: { n: 2, message: "v2", notes: "- removed: the old door" },
+    });
+    expect(mock.requests.at(-1)?.body).toEqual({ notes: "- removed: the old door" });
+  });
+
+  test('note: no version means the latest; --notes "" clears', async () => {
+    const r = await pbx(sb, ["note", "a.luau", "--notes", ""]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("no changelog");
+    expect(mock.requests.at(-1)).toMatchObject({ path: `/api/v1/scripts/${a}/versions/3`, body: { notes: "" } });
+    expect(mock.scripts.get(a)?.versions[2]?.notes).toBe("");
+  });
+
+  test("note: usage and api errors", async () => {
+    let r = await pbx(sb, ["note", a, "2"]);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("nothing to change");
+    r = await pbx(sb, ["note", `${a}@1`, "2", "-m", "x"]);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("name different versions");
+    r = await pbx(sb, ["note", a, "9", "-m", "x"]);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain("version 9 does not exist");
+    const other = sandbox(mock.url);
+    r = await pbx(other, ["note", a, "1", "-m", "mine now"]);
+    expect(r.code).toBe(1);
+    expect(mock.scripts.get(a)?.versions[0]?.message).toBe("the first cut");
+  });
+
+  test("help covers the new flags and command", async () => {
+    expect((await pbx(sb, ["help", "push"])).stdout).toContain("--notes-file <path>");
+    expect((await pbx(sb, ["log", "--help"])).stdout).toContain("--short");
+    const help = await pbx(sb, ["help", "note"]);
+    expect(help.stdout).toContain("usage\n  pbx note <slug> [n] [flags]");
+    expect((await pbx(sb, ["--help"])).stdout).toMatch(/note\s+rewrite a version's summary or changelog/);
+  });
+});
+
 describe(`auth, errors and output modes (${RUNNER})`, () => {
   test("PASTEBLOX_TOKEN authenticates without a config file", async () => {
     mock.addKey("pbx_ci_token_123", "github actions");
